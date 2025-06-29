@@ -1,0 +1,4 @@
+.env
+Build_Your_First_Ai_Agent.ipynb
+.gitignore
+chroma_db/
