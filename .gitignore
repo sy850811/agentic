@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+*.m4a
+*.mp3
+*.wav
+*.mp4
+uploads/
+tmp_chunks/
+.DS_Store
