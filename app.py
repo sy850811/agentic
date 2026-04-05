@@ -26,12 +26,17 @@ def transcribe(audio_path: str | None) -> tuple[str, str]:
         return "", "Upload an audio file first."
     try:
         result = _get_pipeline().run(audio_path)
-        capture(result, {"source": "voice_memo", "type": "transcript"})
-        return result, "Done. Saved to Open Brain."
     except RuntimeError as exc:
-        return "", f"Configuration error: {exc}"
+        return "", f"Transcription error: {exc}"
     except Exception as exc:
-        return "", f"Error: {exc}"
+        return "", f"Transcription error: {exc}"
+
+    try:
+        capture(result, {"source": "voice_memo", "type": "transcript"})
+    except Exception as exc:
+        return result, f"Transcribed, but Open Brain capture failed: {exc}"
+
+    return result, "Transcribed and saved to Open Brain."
 
 
 # ---------------------------------------------------------------------------
@@ -62,18 +67,21 @@ def chat_turn(
         # 3. TTS
         audio_out = text_to_speech(assistant_text)
 
-        # 4. Capture both turns to Open Brain
-        capture(user_text, {"source": "voice_chat", "role": "user"})
-        capture(assistant_text, {"source": "voice_chat", "role": "assistant"})
-
-        # 5. Update state
+        # 4. Update state
         history_state = history_state + [
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": assistant_text},
         ]
         chat_display = chat_display + [[user_text, assistant_text]]
 
-        return chat_display, history_state, audio_out, "Done. Saved to Open Brain."
+        # 5. Capture both turns to Open Brain — surface any failure
+        try:
+            capture(user_text, {"source": "voice_chat", "role": "user"})
+            capture(assistant_text, {"source": "voice_chat", "role": "assistant"})
+        except Exception as exc:
+            return chat_display, history_state, audio_out, f"Replied, but Open Brain capture failed: {exc}"
+
+        return chat_display, history_state, audio_out, "Replied and saved to Open Brain."
 
     except RuntimeError as exc:
         return chat_display, history_state, None, f"Configuration error: {exc}"

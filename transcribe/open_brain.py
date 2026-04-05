@@ -11,17 +11,13 @@ Required env vars (add to .env):
     SUPABASE_SECRET_KEY  — Secret key (not the anon/publishable key)
 """
 
-import logging
 import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-
 _EMBEDDING_MODEL = "text-embedding-3-small"  # 1536 dims, matches schema
-_EMBEDDING_DIMS = 1536
 
 
 # ---------------------------------------------------------------------------
@@ -55,66 +51,58 @@ def _generate_embedding(text: str) -> list[float]:
         try:
             return _embed_azure(text)
         except Exception as exc:
-            logger.warning("Azure embedding failed, falling back to OpenAI: %s", exc)
+            raise RuntimeError(f"Azure embedding failed: {exc}") from exc
 
     if os.environ.get("OPENAI_API_KEY"):
         return _embed_openai(text)
 
-    raise RuntimeError("No embedding provider configured for Open Brain")
+    raise RuntimeError(
+        "No embedding provider configured. "
+        "Set OPENAI_API_KEY or Azure OpenAI vars in .env"
+    )
 
 
 # ---------------------------------------------------------------------------
-# Supabase write — calls upsert_thought RPC (handles dedup server-side)
-# then patches in the embedding
+# Supabase write
 # ---------------------------------------------------------------------------
 
 def _get_supabase_client():
     from supabase import create_client
 
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_SECRET_KEY"]
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SECRET_KEY")
+
+    if not url or not key:
+        raise RuntimeError(
+            "Open Brain not configured. "
+            "Add SUPABASE_URL and SUPABASE_SECRET_KEY to .env"
+        )
     return create_client(url, key)
-
-
-def _is_configured() -> bool:
-    return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SECRET_KEY"))
 
 
 def capture(content: str, metadata: dict | None = None) -> None:
     """
-    Save a thought to Open Brain. Fire-and-forget — never raises.
+    Save a thought to Open Brain. Raises on failure — caller decides what to show.
 
-    Calls the upsert_thought RPC first (which deduplicates and sets
-    content_fingerprint), then updates the row with the embedding so
-    semantic search works.
+    Calls the upsert_thought RPC (dedup by content fingerprint),
+    then patches in the embedding for semantic search.
     """
-    if not _is_configured():
-        return
-
     if not content or not content.strip():
-        return
+        raise ValueError("Cannot capture an empty thought")
 
-    try:
-        client = _get_supabase_client()
-        payload = {"metadata": metadata or {}}
+    client = _get_supabase_client()
+    payload = {"metadata": metadata or {}}
 
-        # Step 1: upsert (dedup by content fingerprint)
-        result = client.rpc(
-            "upsert_thought",
-            {"p_content": content, "p_payload": payload},
-        ).execute()
+    # Step 1: upsert (dedup by content fingerprint)
+    result = client.rpc(
+        "upsert_thought",
+        {"p_content": content, "p_payload": payload},
+    ).execute()
 
-        row_id = result.data.get("id") if result.data else None
-        if not row_id:
-            logger.warning("Open Brain: upsert returned no id")
-            return
+    row_id = result.data.get("id") if result.data else None
+    if not row_id:
+        raise RuntimeError("Open Brain: upsert returned no row id")
 
-        # Step 2: generate embedding and patch the row
-        embedding = _generate_embedding(content)
-        client.table("thoughts").update({"embedding": embedding}).eq("id", row_id).execute()
-
-        logger.info("Open Brain: captured thought %s", row_id)
-
-    except Exception as exc:
-        # Never block the main app — just log
-        logger.warning("Open Brain capture failed (non-fatal): %s", exc)
+    # Step 2: generate embedding and patch the row
+    embedding = _generate_embedding(content)
+    client.table("thoughts").update({"embedding": embedding}).eq("id", row_id).execute()
