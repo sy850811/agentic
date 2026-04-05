@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from transcribe.open_brain import capture
 from transcribe.pipeline import TranscriptionPipeline
 from transcribe.voice_chat import get_response, text_to_speech
 
@@ -25,7 +26,8 @@ def transcribe(audio_path: str | None) -> tuple[str, str]:
         return "", "Upload an audio file first."
     try:
         result = _get_pipeline().run(audio_path)
-        return result, "Done."
+        capture(result, {"source": "voice_memo", "type": "transcript"})
+        return result, "Done. Saved to Open Brain."
     except RuntimeError as exc:
         return "", f"Configuration error: {exc}"
     except Exception as exc:
@@ -60,14 +62,18 @@ def chat_turn(
         # 3. TTS
         audio_out = text_to_speech(assistant_text)
 
-        # 4. Update state
+        # 4. Capture both turns to Open Brain
+        capture(user_text, {"source": "voice_chat", "role": "user"})
+        capture(assistant_text, {"source": "voice_chat", "role": "assistant"})
+
+        # 5. Update state
         history_state = history_state + [
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": assistant_text},
         ]
         chat_display = chat_display + [[user_text, assistant_text]]
 
-        return chat_display, history_state, audio_out, "Done."
+        return chat_display, history_state, audio_out, "Done. Saved to Open Brain."
 
     except RuntimeError as exc:
         return chat_display, history_state, None, f"Configuration error: {exc}"

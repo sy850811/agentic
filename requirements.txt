@@ -3,3 +3,4 @@ anthropic>=0.25.0
 gradio>=4.36.0
 pydub>=0.25.1
 python-dotenv>=1.0.0
+supabase>=2.0.0
