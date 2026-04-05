@@ -1,6 +1,0 @@
-langchain 
-openai 
-langchain-openai 
-langchain_community 
-chromadb 
-pandas
