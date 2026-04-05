@@ -7,7 +7,13 @@ from .chunker import chunk_audio, cleanup_chunks, needs_chunking
 
 load_dotenv()
 
-INITIAL_PROMPT = "Ek mix conversation hai English aur Hindi mein."
+# Seeding with Roman Hindi examples nudges Whisper to output Roman script
+# instead of Devanagari for Hindi words.
+INITIAL_PROMPT = (
+    "Yaar, aaj meeting mein kya hua? Bohot interesting tha. "
+    "Main theek hoon, aap kaise hain? Haan, bilkul sahi keh rahe ho. "
+    "Theek hai, let's move on. Dekho, problem yeh hai."
+)
 
 
 class _WhisperProvider(Protocol):
